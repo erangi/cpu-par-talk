@@ -115,7 +115,7 @@ static void BM_findMax_intrinsics(benchmark::State& state)
         benchmark::DoNotOptimize(findMax_intrinsics(data));
     }
 }
-//BENCHMARK(BM_findMax_intrinsics);
+BENCHMARK(BM_findMax_intrinsics);
 
 static void BM_findMaxAvx512(benchmark::State& state)
 {
@@ -124,7 +124,7 @@ static void BM_findMaxAvx512(benchmark::State& state)
         benchmark::DoNotOptimize(findMaxAvx512(data));
     }
 }
-//BENCHMARK(BM_findMaxAvx512);
+BENCHMARK(BM_findMaxAvx512);
 
 static void BM_findMaxAvx2(benchmark::State& state)
 {
@@ -145,3 +145,4 @@ static void BM_findMaxScalar(benchmark::State& state)
 BENCHMARK(BM_findMaxScalar);
 
 BENCHMARK_MAIN();
+
