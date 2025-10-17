@@ -1,5 +1,5 @@
 # cpu-par-talk
-Code examples for sequential code parallelism talk
+Code examples for my Core C++ 2025 talk - [Parallel Paths: From SIMD Lanes to Memory Highways in C++](https://corecpp.org/schedule_orig/#session-12)
 
 ## Installing google benchmark
 
@@ -9,20 +9,12 @@ Code examples for sequential code parallelism talk
 sudo apt install libbenchmark-dev
 ```
 
-### Oracle linux via EPEL - maybe works
+### Oracle linux 8.5
 
 ```
-sudo dnf install epel-release
-sudo dnf search benchmark | grep google
+sudo dnf install google-benchmark-devel
 ```
-If found `benchmark-devel` or so, install it.
 
-### Oracle linux from source
+## Running benchmarks
 
-```
-git clone https://github.com/google/benchmark.git
-cd benchmark && cmake -E make_directory build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release -DBENCHMARK_DOWNLOAD_DEPENDENCIES=on ..
-make -j$(nproc)
-sudo make install
-```
+The SIMD benchmarks are in the `simd-bench` executable, and the MLP benchmarks are in the `mlp-bench` executable. Run them as is to execute all the benchmarks or add `--benchmark_filter=<filter>` to the command line to run just some of the benchmarks.
