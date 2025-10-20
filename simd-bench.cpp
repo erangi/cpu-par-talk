@@ -7,11 +7,14 @@
 #include <random>
 #include <iostream>
 
+// Use the standard algorithm to find the max element. The execution type allows
+// vectorized execution, but it seems to have no impact.
 int64_t findMax_std(std::vector<int64_t>& arr)
 {
     return *max_element(std::execution::unseq, arr.begin(), arr.end());
 }
 
+// Intrinsics-based implementation. The targets are required for the instructions used.
 __attribute__((target("avx512f,avx512vl")))
 int64_t findMax_intrinsics(std::vector<int64_t>& arr)
 {
@@ -44,6 +47,8 @@ int64_t findMax_intrinsics(std::vector<int64_t>& arr)
     return _mm_cvtsi128_si64(max64);
 }
 
+// The shared implementation used for both AVX2 and AVX-512 auto-vectorization.
+// Inlining ensures the code is compiled according to the settings of the inlining function.
 inline __attribute__((always_inline))
 int64_t findMaxShared(std::vector<int64_t>& arr)
 {
@@ -56,18 +61,21 @@ int64_t findMaxShared(std::vector<int64_t>& arr)
     return max;
 }
 
+// Enable AVX-512 instructions.
 __attribute__((target("avx512f")))
 int64_t findMaxAvx512(std::vector<int64_t>& arr)
 {
     return findMaxShared(arr);
 }
 
+// Enable AVX2 instructions.
 __attribute__((target("avx2")))
 int64_t findMaxAvx2(std::vector<int64_t>& arr)
 {
     return findMaxShared(arr);
 }
 
+// Unvectorized implementation, disabling SSE and AVX.
 __attribute__((target("arch=x86-64,no-sse,no-avx")))
 int64_t findMaxScalar(std::vector<int64_t>& arr)
 {
@@ -82,8 +90,10 @@ int64_t findMaxScalar(std::vector<int64_t>& arr)
     return max;
 }
 
-constexpr int dataSize = 1024;
+constexpr size_t dataSize = 1024;
 
+// The input array includes values from -(dataSize / 2) to (dataSize / 2), shuffled.
+// It doesn't mean much, but it's easier to validate the result this way.
 std::vector<int64_t> genData(size_t size)
 {
     std::cout << "generating data...\n";
@@ -145,4 +155,5 @@ static void BM_findMaxScalar(benchmark::State& state)
 BENCHMARK(BM_findMaxScalar);
 
 BENCHMARK_MAIN();
+
 
