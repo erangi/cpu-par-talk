@@ -9,11 +9,11 @@ constexpr size_t TABLE_SIZE = 1 * 1024 * 1024;
 constexpr size_t NUM_KEYS = 64 * 1024;
 
 // Global shared data
-static std::vector<std::string> table;
-static std::vector<size_t> keys;
+std::vector<std::string> table;
+std::vector<size_t> keys;
 
 // Fill memory with random data
-static void init_data()
+void initData()
 {
     std::mt19937_64 rng(12345);
     table.resize(TABLE_SIZE);
@@ -27,7 +27,7 @@ static void init_data()
 
 // Explicitly flush an array from caches using clflush
 template <typename T>
-inline void flush_from_cache(const std::vector<T>& vec)
+inline void flushFromCache(const std::vector<T>& vec)
 {
     const char* data = reinterpret_cast<const char*>(vec.data());
     size_t size = vec.size() * sizeof(T);
@@ -36,7 +36,7 @@ inline void flush_from_cache(const std::vector<T>& vec)
     _mm_mfence(); // ensure flush completes before continuing
 }
 
-// Serial benchmark
+// Serial benchmark - the baseline
 static void BM_Serial(benchmark::State& state)
 {
     int sum;
@@ -46,8 +46,8 @@ static void BM_Serial(benchmark::State& state)
         state.PauseTiming();  // don't include flush time
         sum = 0;
         ++iterations;
-        flush_from_cache(table);
-        //flush_from_cache(keys);
+        flushFromCache(table);
+        // no need to flush the keys array - it's traversed sequentially anyway
         state.ResumeTiming();
 
         for (size_t i = 0; i < keys.size(); ++i)
@@ -68,8 +68,8 @@ static void BM_Batched8(benchmark::State& state)
 
     for (auto _ : state) {
         state.PauseTiming();
-        flush_from_cache(table);
-        //flush_from_cache(keys);
+        flushFromCache(table);
+        //flushFromCache(keys);
         sum0 = sum1 = sum2 = sum3 = sum4 = sum5 = sum6 = sum7 = 0;
         ++iterations;
         state.ResumeTiming();
@@ -133,6 +133,7 @@ struct Unrolled<END, END>
     static void loop(OP&& op) {}
 };
 
+// This is the actual calculation work, parameterized by the size of the batch.
 template<uint8_t BATCH>
 int calcSum()
 {
@@ -163,8 +164,7 @@ static void BatchedGen(benchmark::State& state)
 
     for (auto _ : state) {
         state.PauseTiming();
-        flush_from_cache(table);
-        //flush_from_cache(keys);
+        flushFromCache(table);
         ++iterations;
         state.ResumeTiming();
 
@@ -176,6 +176,8 @@ static void BatchedGen(benchmark::State& state)
     std::cout << "BM_BatchedGen" << BATCH << " final sum: " << sum << " in " << iterations << " iterations.\n";
 }
 
+// A test with batch of size 1, unrolled by the template param.
+// It is expected to perform like the somewhat simpler BM_Serial function.
 static void BM_BatchedGen1(benchmark::State& state)
 {
     BatchedGen<1>(state);
@@ -211,46 +213,8 @@ static void BM_BatchedGen64(benchmark::State& state)
     BatchedGen<64>(state);
 }
 
-// Batched benchmark
-static void BM_Batched4(benchmark::State& state)
-{
-    constexpr size_t BATCH = 4;
-    int sum0, sum1, sum2, sum3;
-    int iterations = 0;
-
-    for (auto _ : state) {
-        state.PauseTiming();
-        flush_from_cache(table);
-        //flush_from_cache(keys);
-        sum0 = sum1 = sum2 = sum3 = 0;
-        ++iterations;
-        state.ResumeTiming();
-
-        for (size_t i = 0; i + BATCH <= keys.size(); i += BATCH) {
-            _mm_prefetch(&table[keys[i + 0]], _MM_HINT_T0);
-            _mm_prefetch(&table[keys[i + 1]], _MM_HINT_T0);
-            _mm_prefetch(&table[keys[i + 2]], _MM_HINT_T0);
-            _mm_prefetch(&table[keys[i + 3]], _MM_HINT_T0);
-            _mm_prefetch(table[keys[i + 0]].c_str(), _MM_HINT_T0);
-            _mm_prefetch(table[keys[i + 1]].c_str(), _MM_HINT_T0);
-            _mm_prefetch(table[keys[i + 2]].c_str(), _MM_HINT_T0);
-            _mm_prefetch(table[keys[i + 3]].c_str(), _MM_HINT_T0);
-            sum0 += strlen(table[keys[i + 0]].c_str());
-            sum1 += strlen(table[keys[i + 1]].c_str());
-            sum2 += strlen(table[keys[i + 2]].c_str());
-            sum3 += strlen(table[keys[i + 3]].c_str());
-        }
-
-        benchmark::DoNotOptimize(sum0);
-        benchmark::DoNotOptimize(sum1);
-        benchmark::DoNotOptimize(sum2);
-        benchmark::DoNotOptimize(sum3);
-    }
-
-    int total = sum0 + sum1 + sum2 + sum3;
-    std::cout << "BM_Batched4 final sum: " << total << " in " << iterations << " iterations.\n";
-}
-
+// Turn this on to set an explicit number of test iterations.
+// Otherwise, the frameworks picks a number that produces accurate enough results.
 #if 0
 static constexpr size_t IterationsLimit = 32;
 #define WITH_LIMIT ->Iterations(IterationsLimit)
@@ -261,9 +225,8 @@ static constexpr size_t IterationsLimit = 32;
 BENCHMARK(BM_Serial) WITH_LIMIT;
 BENCHMARK(BM_BatchedGen1) WITH_LIMIT;
 BENCHMARK(BM_BatchedGen2) WITH_LIMIT;
-//BENCHMARK(BM_Batched4) WITH_LIMIT;
 BENCHMARK(BM_BatchedGen4) WITH_LIMIT;
-//BENCHMARK(BM_Batched8) WITH_LIMIT;
+// Validate generated benchmark: BENCHMARK(BM_Batched8) WITH_LIMIT;
 BENCHMARK(BM_BatchedGen8) WITH_LIMIT;
 BENCHMARK(BM_BatchedGen16) WITH_LIMIT;
 BENCHMARK(BM_BatchedGen32) WITH_LIMIT;
@@ -271,9 +234,10 @@ BENCHMARK(BM_BatchedGen64) WITH_LIMIT;
 
 int main(int argc, char** argv)
 {
-    init_data();
+    initData();
     benchmark::Initialize(&argc, argv);
     benchmark::RunSpecifiedBenchmarks();
     benchmark::Shutdown();
     return 0;
 }
+
