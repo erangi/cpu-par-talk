@@ -112,6 +112,43 @@ inline void flush_from_cache(const std::vector<std::unique_ptr<std::string>>& ve
     _mm_mfence(); // ensure flush completes before continuing
 }
 
+size_t heavyProcessing(const char* str)
+{
+    return strlen(str);
+}
+
+void preloadByPrefetch(const void* ptr)
+{
+    _mm_prefetch(ptr, _MM_HINT_T0);
+}
+
+void preloadByVolatileRead(const void* ptr)
+{
+    volatile char c = static_cast<const char*>(ptr)[0];
+}
+
+#define PRELOAD_BY_PREFETCH 1
+
+#define DO_PRELOAD 1
+
+#ifdef DO_PRELOAD
+
+void preload(const void* ptr)
+{
+#if PRELOAD_BY_PREFETCH
+    preloadByPrefetch(ptr);
+#else
+    preloadByVolatileRead(ptr);
+#endif // PRELOAD_BY_PREFETCH
+}
+
+#else
+
+#define preload(ptr) static_assert(true, "")
+
+#endif // DO_PRELOAD
+
+
 // Serial benchmark
 static void BM_Serial(benchmark::State& state)
 {
@@ -128,7 +165,7 @@ static void BM_Serial(benchmark::State& state)
         state.ResumeTiming();
 
         for (size_t i = 0; i < keys.size(); ++i)
-            sum += strlen(keys[i]->c_str());
+            sum += heavyProcessing(keys[i]->c_str());
 
         benchmark::DoNotOptimize(sum);
         perfCounters.stop();
@@ -154,30 +191,30 @@ static void BM_Batched8(benchmark::State& state)
         state.ResumeTiming();
 
         for (size_t i = 0; i + BATCH <= keys.size(); i += BATCH) {
-            _mm_prefetch(keys[i + 0].get(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 1].get(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 2].get(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 3].get(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 4].get(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 5].get(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 6].get(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 7].get(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 0]->c_str(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 1]->c_str(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 2]->c_str(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 3]->c_str(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 4]->c_str(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 5]->c_str(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 6]->c_str(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 7]->c_str(), _MM_HINT_T0);
-            sum0 += strlen(keys[i + 0]->c_str());
-            sum1 += strlen(keys[i + 1]->c_str());
-            sum2 += strlen(keys[i + 2]->c_str());
-            sum3 += strlen(keys[i + 3]->c_str());
-            sum4 += strlen(keys[i + 4]->c_str());
-            sum5 += strlen(keys[i + 5]->c_str());
-            sum6 += strlen(keys[i + 6]->c_str());
-            sum7 += strlen(keys[i + 7]->c_str());
+            preload(keys[i + 0].get());
+            preload(keys[i + 1].get());
+            preload(keys[i + 2].get());
+            preload(keys[i + 3].get());
+            preload(keys[i + 4].get());
+            preload(keys[i + 5].get());
+            preload(keys[i + 6].get());
+            preload(keys[i + 7].get());
+            preload(keys[i + 0]->c_str());
+            preload(keys[i + 1]->c_str());
+            preload(keys[i + 2]->c_str());
+            preload(keys[i + 3]->c_str());
+            preload(keys[i + 4]->c_str());
+            preload(keys[i + 5]->c_str());
+            preload(keys[i + 6]->c_str());
+            preload(keys[i + 7]->c_str());
+            sum0 += heavyProcessing(keys[i + 0]->c_str());
+            sum1 += heavyProcessing(keys[i + 1]->c_str());
+            sum2 += heavyProcessing(keys[i + 2]->c_str());
+            sum3 += heavyProcessing(keys[i + 3]->c_str());
+            sum4 += heavyProcessing(keys[i + 4]->c_str());
+            sum5 += heavyProcessing(keys[i + 5]->c_str());
+            sum6 += heavyProcessing(keys[i + 6]->c_str());
+            sum7 += heavyProcessing(keys[i + 7]->c_str());
         }
 
         benchmark::DoNotOptimize(sum0);
@@ -213,24 +250,50 @@ struct Unrolled<END, END>
 };
 
 template<uint8_t BATCH>
-int calcSum()
+int calcSum_Unrolled()
 {
     int sum[BATCH]{};
     for (size_t i = 0; i + BATCH <= keys.size(); i += BATCH) {
         Unrolled<0, BATCH>::loop([i](size_t j) {
-            _mm_prefetch(keys[i + j].get(), _MM_HINT_T0);
+            preload(keys[i + j].get());
             });
         Unrolled<0, BATCH>::loop([i](size_t j) {
-            _mm_prefetch(keys[i + j]->c_str(), _MM_HINT_T0);
+            preload(keys[i + j]->c_str());
             });
         Unrolled<0, BATCH>::loop([&sum, i](size_t j) {
-            sum[j] += strlen(keys[i + j]->c_str());
+            sum[j] += heavyProcessing(keys[i + j]->c_str());
             });
     }
     int total = 0;
     Unrolled<0, BATCH>::loop([&sum, &total](size_t i) {
         total += sum[i];
         });
+    return total;
+}
+
+template<uint8_t BATCH>
+int calcSum()
+{
+    int sum[BATCH]{};
+    for (size_t i = 0; i + BATCH <= keys.size(); i += BATCH) {
+#pragma GCC unroll BATCH
+        for (size_t j = 0; j < BATCH; ++j) {
+            preload(keys[i + j].get());
+        }
+#pragma GCC unroll BATCH
+        for (size_t j = 0; j < BATCH; ++j) {
+            preload(keys[i + j]->c_str());
+        }
+#pragma GCC unroll BATCH
+        for (size_t j = 0; j < BATCH; ++j) {
+            sum[j] += heavyProcessing(keys[i + j]->c_str());
+        }
+    }
+    int total = 0;
+#pragma GCC unroll BATCH
+    for (size_t j = 0; j < BATCH; ++j) {
+        total += sum[j];
+    }
     return total;
 }
 
@@ -309,18 +372,18 @@ static void BM_Batched4(benchmark::State& state)
         state.ResumeTiming();
 
         for (size_t i = 0; i + BATCH <= keys.size(); i += BATCH) {
-            _mm_prefetch(keys[i + 0].get(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 1].get(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 2].get(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 3].get(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 0]->c_str(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 1]->c_str(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 2]->c_str(), _MM_HINT_T0);
-            _mm_prefetch(keys[i + 3]->c_str(), _MM_HINT_T0);
-            sum0 += strlen(keys[i + 0]->c_str());
-            sum1 += strlen(keys[i + 1]->c_str());
-            sum2 += strlen(keys[i + 2]->c_str());
-            sum3 += strlen(keys[i + 3]->c_str());
+            preload(keys[i + 0].get());
+            preload(keys[i + 1].get());
+            preload(keys[i + 2].get());
+            preload(keys[i + 3].get());
+            preload(keys[i + 0]->c_str());
+            preload(keys[i + 1]->c_str());
+            preload(keys[i + 2]->c_str());
+            preload(keys[i + 3]->c_str());
+            sum0 += heavyProcessing(keys[i + 0]->c_str());
+            sum1 += heavyProcessing(keys[i + 1]->c_str());
+            sum2 += heavyProcessing(keys[i + 2]->c_str());
+            sum3 += heavyProcessing(keys[i + 3]->c_str());
         }
 
         benchmark::DoNotOptimize(sum0);
@@ -388,10 +451,10 @@ static void BM_Batched4_no_prefetch(benchmark::State& state)
             volatile char v2 = s2[0];
             volatile char v3 = s3[0];
 
-            sum0 += strlen(s0);
-            sum1 += strlen(s1);
-            sum2 += strlen(s2);
-            sum3 += strlen(s3);
+            sum0 += heavyProcessing(s0);
+            sum1 += heavyProcessing(s1);
+            sum2 += heavyProcessing(s2);
+            sum3 += heavyProcessing(s3);
         }
 
         benchmark::DoNotOptimize(sum0);
@@ -425,6 +488,16 @@ BENCHMARK(BM_Batched8) WITH_LIMIT;
 
 int main(int argc, char** argv)
 {
+#if PRELOAD_BY_PREFETCH
+    std::cout << "### Using preload by prefetch ###\n";
+#else
+    std::cout << "### Using preload by volatile read ###\n";
+#endif
+
+#ifndef NDEBUG
+    std::cerr << "!!! RUNNING A DEBUG BUILD - IGNORE THE RESULTS !!!\n";
+#endif
+
     init_data();
     benchmark::Initialize(&argc, argv);
     benchmark::RunSpecifiedBenchmarks();

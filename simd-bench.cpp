@@ -352,6 +352,10 @@ constexpr int dataSize = 1024;
 
 std::vector<int64_t> genData(size_t size)
 {
+#ifndef NDEBUG
+    std::cerr << "!!! RUNNING A DEBUG BUILD - IGNORE THE RESULTS !!!\n";
+#endif
+
     std::cout << "generating data...\n";
     std::vector<int64_t> d;
     d.resize(size);

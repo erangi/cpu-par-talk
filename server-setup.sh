@@ -10,10 +10,10 @@ sudo apt update
 sudo apt install -y build-essential flex bison libgmp-dev libmpfr-dev libmpc-dev \
     linux-tools-$(uname -r) linux-tools-generic libbenchmark-dev power-profiles-daemon
 
-# 2. Install GCC 15 (Toolchain PPA)
+# 2. Install GCC 16 (Toolchain PPA)
 sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
 sudo apt update
-sudo apt install -y gcc-15 g++-15
+sudo apt install -y gcc-16 g++-16
 
 # 3. Configure Power Profile to Performance
 sudo powerprofilesctl set performance
@@ -27,4 +27,4 @@ fi
 sudo sysctl -w kernel.perf_event_paranoid=0
 
 echo "Setup complete."
-echo "Use 'g++-15 -std=c++26 -O3 -march=sapphirerapids' for compilation."
+echo "Use 'g++-16 -std=c++26 -O3 -march=sapphirerapids' for compilation."

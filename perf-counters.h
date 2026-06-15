@@ -74,7 +74,7 @@ public:
     long long read_val()
     {
         long long count;
-        read(fd, &count, sizeof(long long));
+        ssize_t ret = read(fd, &count, sizeof(long long));
         return count;
     }
 
